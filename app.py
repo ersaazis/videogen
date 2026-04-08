@@ -13,12 +13,10 @@ import numpy as np
 from dotenv import load_dotenv
 import shutil
 import time
-import moviepy
-from moviepy import AudioFileClip, concatenate_audioclips
-import whisper_timestamped as whisper
-from df.enhance import enhance, init_df, load_audio, save_audio
-import torch
 import video
+from audio_enhance import AudioEnhancer
+from video_planning import VideoPlanner
+from broll_video_finder import BrollFinder
 
 # Load environment variables
 load_dotenv()
@@ -74,7 +72,7 @@ def delete_project_files(project_id):
     Permanently deletes a project directory and its content.
     """
     if not project_id:
-        return "Masukkan Project ID yang ingin dihapus.", "", [], None, [], None, get_project_list()
+        return "", "Masukkan Project ID yang ingin dihapus.", "", [], None, [], None, "", "", "", "", get_project_list()
     
     safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
@@ -83,10 +81,10 @@ def delete_project_files(project_id):
         try:
             shutil.rmtree(project_dir)
             # Clear all project-related fields
-            return f"Project '{safe_pid}' BERHASIL DIHAPUS PERMANEN.", "", [], None, [], None, get_project_list()
+            return "", f"Project '{safe_pid}' BERHASIL DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", get_project_list()
         except Exception as e:
-            return f"Gagal menghapus project: {str(e)}", "", [], None, [], None, get_project_list()
-    return f"Project '{safe_pid}' tidak ditemukan.", "", [], None, [], None, get_project_list()
+            return "", f"Gagal menghapus project: {str(e)}", "", [], None, [], None, "", "", "", "", get_project_list()
+    return "", f"Project '{safe_pid}' tidak ditemukan.", "", [], None, [], None, "", "", "", "", get_project_list()
 
 def delete_all_projects():
     """
@@ -100,276 +98,12 @@ def delete_all_projects():
                 try:
                     shutil.rmtree(path)
                 except: pass
-    return "SEMUA PROJECT TELAH DIHAPUS PERMANEN.", "", [], None, [], None, get_project_list()
+    return "", "SEMUA PROJECT TELAH DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", get_project_list()
 
-# --- Helper Functions ---
+# Helper functions extracted to audio_enhance.py, video_planning.py, and broll_video_finder.py
 
-# Global model variables for lazy loading
-_whisper_model = None
-_df_model = None
-_df_state = None
-
-def get_whisper_model():
-    global _whisper_model
-    if _whisper_model is None:
-        print("Loading Whisper Model (base)...")
-        _whisper_model = whisper.load_model("base", device="cpu")
-    return _whisper_model
-
-def get_df_model():
-    global _df_model, _df_state
-    if _df_model is None:
-        print("Loading DeepFilterNet Model...")
-        _df_model, _df_state, _ = init_df()
-    return _df_model, _df_state
-
-def enhance_audio_file(input_path, output_path):
-    model, state = get_df_model()
-    audio, _ = load_audio(input_path, sr=state.sr())
-    enhanced = enhance(model, state, audio)
-    
-    # Amplifikasi / Normalisasi (Meningkatkan volume ke level maksimal yang aman)
-    max_val = torch.max(torch.abs(enhanced))
-    if max_val > 0:
-        enhanced = (enhanced / max_val) * 0.9
-        
-    save_audio(output_path, enhanced, sr=state.sr())
-    return output_path
-
-def get_exact_timestamps(audio_path):
-    model = get_whisper_model()
-    audio = whisper.load_audio(audio_path)
-    result = whisper.transcribe(model, audio, language="en")
-    
-    words_data = []
-    for segment in result["segments"]:
-        for word in segment["words"]:
-            words_data.append({
-                "text": word["text"].strip(),
-                "start": word["start"],
-                "end": word["end"]
-            })
-    return words_data
-
-def fix_transcription_with_ai(unfixed_segments, original_script, api_key):
-    """
-    Menggunakan AI untuk memperbaiki misspelling pada hasil transkripsi Whisper
-    berdasarkan naskah asli (Source of Truth).
-    """
-    if not api_key:
-        return unfixed_segments
-
-    try:
-        client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
-        transcription_only = [seg["text"] for seg in unfixed_segments]
-        
-        prompt = f"""
-        You are a subtitle editor. I have a transcription from Whisper that might contain misspellings or slightly wrong words.
-        I also have the original script (Source of Truth).
-        
-        Original Script: "{original_script}"
-        
-        Mistyped Transcription Segments:
-        {json.dumps(transcription_only, indent=2)}
-        
-        TASK:
-        Fix the transcription segments so they match the spelling and words of the Original Script. 
-        IMPORTANT: 
-        1. Keep the exact same number of segments as provided in the list.
-        2. Do not merge or split segments.
-        3. Return ONLY a valid JSON list of strings.
-        
-        Example Output: ["Corrected word 1", "Corrected word 2", ...]
-        """
-        
-        response = client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        content = response.choices[0].message.content
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        fixed_texts = json.loads(content)
-        if isinstance(fixed_texts, dict) and "segments" in fixed_texts:
-             fixed_texts = fixed_texts["segments"]
-             
-        if len(fixed_texts) == len(unfixed_segments):
-            for i in range(len(unfixed_segments)):
-                unfixed_segments[i]["text"] = fixed_texts[i]
-            return unfixed_segments
-    except Exception as e:
-        print(f"  ⚠️ Error AI misspelling fix: {e}")
-    return unfixed_segments
-
-def generate_cc_json(valid_items, temp_dir, api_key):
-    all_captions = []
-    current_global_time = 0
-    
-    for item in valid_items:
-        path = item.get("audio_path")
-        if not path or not os.path.exists(path):
-            continue
-            
-        try:
-            exact_words = get_exact_timestamps(path)
-            words_per_group = 3
-            item_captions = []
-            
-            for i in range(0, len(exact_words), words_per_group):
-                group = exact_words[i:i + words_per_group]
-                group_text = " ".join([w["text"] for w in group])
-                group_start = current_global_time + group[0]["start"]
-                group_end = current_global_time + group[-1]["end"]
-
-                item_captions.append({
-                    "start": round(group_start, 2),
-                    "end": round(group_end, 2),
-                    "text": group_text,
-                    "speaker": item.get("speaker")
-                })
-            
-            if item.get("message"):
-                item_captions = fix_transcription_with_ai(item_captions, item["message"], api_key)
-            all_captions.extend(item_captions)
-        except Exception as e:
-            print(f"  ⚠️ Gagal transkripsi exact untuk {path}: {e}")
-            
-        with AudioFileClip(path) as clip:
-            current_global_time += clip.duration
-        
-    cc_path = os.path.join(temp_dir, "cc.json")
-    with open(cc_path, "w") as f:
-        json.dump(all_captions, f, indent=4)
-    return cc_path
-
-def generate_character_json(valid_items, temp_dir):
-    current_time = 0
-    transitions = []
-    for item in valid_items:
-        path = item.get("audio_path")
-        if path and os.path.exists(path):
-            with AudioFileClip(path) as clip:
-                duration = clip.duration
-                speaker_lower = item.get("speaker", "Ted").lower()
-                expr = item.get("expression", "normal")
-                image_path = f"avatar/{speaker_lower}/{expr}.png"
-                
-                transitions.append({
-                    "speaker": item.get("speaker"),
-                    "expression": expr,
-                    "image_path": image_path,
-                    "start": round(current_time, 2),
-                    "end": round(current_time + duration, 2),
-                    "duration": round(duration, 2)
-                })
-                current_time += duration
-    json_path = os.path.join(temp_dir, "character.json")
-    with open(json_path, "w") as f:
-        json.dump(transitions, f, indent=4)
-    return json_path
-
-def search_pexels_videos(query):
-    api_key = os.environ.get("PIXELS_API_KEY")
-    if not api_key: return []
-    clean_query = re.sub(r'[^a-zA-Z0-9\s]', '', query).strip() or "podcast"
-    url = f"https://api.pexels.com/videos/search?query={clean_query}&per_page=10&orientation=portrait"
-    headers = {"Authorization": api_key}
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            return response.json().get("videos", [])
-    except: pass
-    return []
-
-def download_video(url, dest_path):
-    if os.path.exists(dest_path): return True
-    try:
-        res = requests.get(url, stream=True, timeout=30)
-        if res.status_code == 200:
-            with open(dest_path, "wb") as f:
-                for chunk in res.iter_content(chunk_size=1024*1024):
-                    if chunk: f.write(chunk)
-            return True
-    except: pass
-    return False
-
-def get_broll_plan_from_llm(cc_data, api_key):
-    if not api_key: return None
-    full_text = " ".join([c["text"] for c in cc_data])
-    total_duration = cc_data[-1]["end"] if cc_data else 0
-    prompt = f"""
-    You are a video editor. Plan the background B-roll segments for a vertical short video.
-    The video is {total_duration} seconds long.
-    
-    Transcript:
-    {full_text}
-    
-    TASK:
-    Divide the video into dynamic B-roll segments (each around 5-30 seconds). 
-    For each segment, provide a specific search keyword for Pexels.
-    The segments must cover the entire {total_duration} seconds without gaps.
-    
-    Return ONLY a valid JSON list of objects:
-    [
-      {{"start": 0.0, "end": 5.0, "keyword": "rocket launch"}},
-      ...
-    ]
-    """
-    try:
-        client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
-        response = client.chat.completions.create(model=DEEPSEEK_MODEL, messages=[{"role": "user", "content": prompt}])
-        content = response.choices[0].message.content
-        if "```json" in content: content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content: content = content.split("```")[1].split("```")[0].strip()
-        plan = json.loads(content)
-        if isinstance(plan, dict) and "segments" in plan: plan = plan["segments"]
-        return plan
-    except: return None
-
-def generate_broll_json(valid_items, temp_dir, api_key):
-    cc_path = os.path.join(temp_dir, "cc.json")
-    if not os.path.exists(cc_path): return []
-    with open(cc_path, 'r') as f: cc_data = json.load(f)
-    plan = get_broll_plan_from_llm(cc_data, api_key)
-    if not plan:
-        plan = []
-        current_t = 0
-        for item in valid_items:
-            path = item.get("audio_path")
-            with AudioFileClip(path) as clip: d = clip.duration
-            plan.append({"start": current_t, "end": current_t + d, "keyword": item.get("message", "podcast")[:50]})
-            current_t += d
-
-    project_dir = os.path.dirname(temp_dir)
-    broll_video_dir = os.path.join(project_dir, "broll_videos")
-    os.makedirs(broll_video_dir, exist_ok=True)
-
-    final_broll = []
-    for seg in plan:
-        start_t, end_t, keyword = seg["start"], seg["end"], seg["keyword"]
-        target_dur = end_t - start_t
-        videos = search_pexels_videos(keyword)
-        acc_dur = 0
-        for v in videos:
-            v_id, v_dur = v.get("id"), v.get("duration", 0)
-            video_url = next((f.get("link") for f in v.get("video_files", []) if f.get("width") in [720, 1080]), None) or (v.get("video_files", [])[0].get("link") if v.get("video_files") else None)
-            if video_url:
-                local_path = os.path.join(broll_video_dir, f"pexels_{v_id}.mp4")
-                if download_video(video_url, local_path):
-                    use_dur = min(v_dur, target_dur - acc_dur)
-                    final_broll.append({"segment_start": round(start_t + acc_dur, 2), "segment_end": round(start_t + acc_dur + use_dur, 2), "duration": round(use_dur, 2), "local_path": local_path, "pexels_id": v_id, "query": keyword})
-                    acc_dur += use_dur
-            if acc_dur >= target_dur: break
-    
-    broll_path = os.path.join(temp_dir, "broll.json")
-    with open(broll_path, "w") as f: json.dump(final_broll, f, indent=4)
-    return final_broll
-
-def process_studio_mastering(project_id, api_key, progress=gr.Progress()):
+def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_music_path=None):
+    print(f"🎚️ [MASTER] Starting Studio Mastering for '{project_id}'...")
     if not project_id: return "Masukkan Project ID.", None
     safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
@@ -378,69 +112,61 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress()):
     
     output_dir = os.path.join(project_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
-    raw_path = os.path.join(output_dir, f"{safe_pid}_joined_raw.mp3")
     final_path = os.path.join(output_dir, f"{safe_pid}_joined.mp3")
     
     try:
         with open(chat_path, 'r') as f: chat_data = json.load(f)
-        audio_clips, valid_items = [], []
+        valid_items = []
+        audio_paths = []
         for item in chat_data:
             path = item.get("audio_path")
             if path and os.path.exists(path):
-                audio_clips.append(AudioFileClip(path))
+                audio_paths.append(path)
                 valid_items.append(item)
         
-        if not audio_clips: return "Audio tidak ditemukan. Generate audio dulu.", None
+        if not audio_paths: return "Audio tidak ditemukan. Generate audio dulu.", None
         
-        progress(0.2, desc="Joining audio...")
-        final_audio = concatenate_audioclips(audio_clips)
-        final_audio.write_audiofile(raw_path, logger=None)
+        # 1. Audio Mastering
+        enhancer = AudioEnhancer()
+        bg_music_default = os.path.join(os.getcwd(), "assets", "Dragón Rojo - The Mini Vandals.mp3")
+        final_bg = bg_music_path if (bg_music_path and os.path.exists(bg_music_path)) else bg_music_default
         
-        progress(0.5, desc="Enhancing audio...")
-        enhance_audio_file(raw_path, final_path)
+        print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
         
+        final_audio_path = enhancer.join_and_enhance(
+            audio_paths, 
+            output_dir, 
+            safe_pid, 
+            bg_music_path=final_bg,
+            bg_music_volume=0.075,
+            progress_callback=progress
+        )
+        if not final_audio_path:
+            return "Gagal melakukan audio mastering.", None, []
+
+        # 2. Video Planning (Captions & Transitions)
         progress(0.7, desc="Generating Metadata...")
-        generate_character_json(valid_items, output_dir)
-        generate_cc_json(valid_items, output_dir, api_key)
-        broll_data = generate_broll_json(valid_items, output_dir, api_key)
+        planner = VideoPlanner(api_key=api_key)
+        cc_data = planner.generate_cc_json(valid_items, output_dir)
+        planner.generate_character_json(valid_items, output_dir)
+
+        # 3. B-Roll Finding
+        finder = BrollFinder(api_key=api_key, pexels_api_key=os.environ.get("PIXELS_API_KEY"))
+        broll_data = finder.generate_broll_json(valid_items, output_dir, cc_data=cc_data)
         
-        for clip in audio_clips: clip.close()
-        final_audio.close()
-        if os.path.exists(raw_path): os.remove(raw_path)
-        
-        return f"Studio Mastering Selesai!\nAudio: {final_path}\nMetadata (cc.json, character.json, broll.json) ok.", final_path, broll_data
+        return f"Studio Mastering Selesai!\nAudio: {final_audio_path}\nMetadata (cc.json, character.json, broll.json) ok.", final_audio_path, broll_data
     except Exception as e: return f"Error: {str(e)}", None, []
 
 def process_video_generation(project_id, fps=30, progress=gr.Progress()):
     if not project_id: return "Masukkan Project ID.", None
-    safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
-    project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
-    output_dir = os.path.join(project_dir, "output")
-    # Juga check temp untuk backward compatibility jika output belum ada
-    temp_dir = os.path.join(project_dir, "temp")
     
-    # Metadata paths (prioritize output folder)
-    cc_path = os.path.join(output_dir, "cc.json") if os.path.exists(os.path.join(output_dir, "cc.json")) else os.path.join(temp_dir, "cc.json")
-    char_path = os.path.join(output_dir, "character.json") if os.path.exists(os.path.join(output_dir, "character.json")) else os.path.join(temp_dir, "character.json")
-    audio_path = os.path.join(output_dir, f"{safe_pid}_joined.mp3") if os.path.exists(os.path.join(output_dir, f"{safe_pid}_joined.mp3")) else os.path.join(temp_dir, f"{safe_pid}_joined.mp3")
-    broll_path = os.path.join(output_dir, "broll.json") if os.path.exists(os.path.join(output_dir, "broll.json")) else os.path.join(temp_dir, "broll.json")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{safe_pid}_final_video.mp4")
-    
-    if not os.path.exists(cc_path) or not os.path.exists(char_path) or not os.path.exists(audio_path):
-        return "File metadata (cc, character, audio) belum lengkap. Selesaikan Step 3 dulu.", None
-        
     try:
-        video.build_video(
-            cc_path=cc_path,
-            char_path=char_path,
-            audio_path=audio_path,
-            output_path=output_path,
-            broll_path=broll_path,
-            fps=fps
-        )
+        from video import VideoRenderer
+        renderer = VideoRenderer(project_id)
+        output_path = renderer.render(fps=fps)
         return f"Video Berhasil Dibuat! Path: {output_path}", output_path
+    except FileNotFoundError as e:
+        return f"File metadata belum lengkap: {str(e)}. Selesaikan Step 3 dulu.", None
     except Exception as e:
         return f"Gagal render video: {str(e)}", None
 
@@ -540,12 +266,18 @@ def load_project_data(project_id):
     master_audio = None
     broll_data = []
     final_video = None
+    ig, yt_h, tk, th = "", "", "", ""
     
     if os.path.exists(project_json_path):
         try:
             with open(project_json_path, "r", encoding="utf-8") as f:
                 proj_data = json.load(f)
             yt_url = proj_data.get("youtube_url", "")
+            social = proj_data.get("social_media", {})
+            ig = social.get("instagram", "")
+            yt_h = social.get("youtube", "")
+            tk = social.get("tiktok", "")
+            th = social.get("threads", "")
             
             transcript_path = os.path.join(project_dir, "transcript.md")
             if os.path.exists(transcript_path):
@@ -593,20 +325,43 @@ def load_project_data(project_id):
                 if os.path.exists(video_path):
                     final_video = video_path
 
-            return yt_url, f"Project '{safe_project_id}' Loaded!", transcript_text, chat_data, master_audio, broll_data, final_video
+            return yt_url, f"Project '{safe_project_id}' Loaded!", transcript_text, chat_data, master_audio, broll_data, final_video, ig, yt_h, tk, th
         except Exception as e:
-            return "", f"Error loading: {str(e)}", "", [], None, [], None
-    return "", "Ready (Project Baru)", "", [], None, [], None
+            return "", f"Error loading: {str(e)}", "", [], None, [], None, "", "", "", ""
+    return "", "Ready (Project Baru)", "", [], None, [], None, "", "", "", ""
 
 def load_and_refresh_plist(project_id):
     """
     Wrapper for load_project_data that also refreshes the project list.
     """
-    yt_url, status, trans, chat, audio, broll, video = load_project_data(project_id)
-    return yt_url, status, trans, chat, audio, broll, video, get_project_list()
+    yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th = load_project_data(project_id)
+    return yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th, get_project_list()
+
+def save_project_social(project_id, ig, yt, tk, th):
+    """
+    Saves Instagram, YouTube, TikTok and Threads handles to project.json.
+    """
+    if not project_id: return
+    safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
+    project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
+    project_json_path = os.path.join(project_dir, "project.json")
+    if os.path.exists(project_json_path):
+        try:
+            with open(project_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["social_media"] = {
+                "instagram": ig,
+                "youtube": yt,
+                "tiktok": tk,
+                "threads": th
+            }
+            with open(project_json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except: pass
 
 
 def generate_all_audio(project_id, chat_data, ci_session, progress=gr.Progress()):
+    print(f"🎙️ [AUDIO] Starting batch generation for {len(chat_data)} lines in project '{project_id}'...")
     if not project_id or not chat_data:
         yield "Project ID atau Data Percakapan kosong.", chat_data
         return
@@ -836,54 +591,82 @@ def generate_script_only(project_id, youtube_url, api_key):
             stream=False
         )
         raw_result = response.choices[0].message.content
+        print(f"✅ [SCRIPT] DeepSeek Response received.")
         
         chat_data = parse_raw_script(raw_result)
+        print(f"✅ [SCRIPT] Parsed {len(chat_data)} dialogue lines.")
         chat_json_path = os.path.join(project_dir, "chat.json")
         with open(chat_json_path, "w", encoding="utf-8") as f:
             json.dump(chat_data, f, indent=4, ensure_ascii=False)
             
-        return "Script Successfully Generated! Please edit & generate audio per-line.", transcript, chat_data, get_project_list()
+        # Generate description.md (General and Social Media)
+        output_dir = os.path.join(project_dir, "output")
+        os.makedirs(output_dir, exist_ok=True)
+        planner = VideoPlanner(api_key=api_key)
+        planner.generate_video_description(chat_data, output_dir)
+        print(f"✅ [SCRIPT] description.md generated in {output_dir}")
+            
+        print(f"🎉 [SCRIPT] Generation complete for '{project_id}'.")
+        return transcript, "Script & Description Successfully Generated!", transcript, chat_data, None, [], None, "", "", "", "", get_project_list()
     except Exception as e:
-        return f"DeepSeek API Failure: {str(e)}", transcript, [], get_project_list()
+        print(f"❌ [SCRIPT] Error: {str(e)}")
+        return "", f"DeepSeek API Failure: {str(e)}", transcript, [], None, [], None, "", "", "", "", get_project_list()
 
 def process_auto_generate(project_id, youtube_url, api_key, ci_session, progress=gr.Progress()):
     if not project_id:
-        yield "Enter Project ID.", "", [], None, [], None, get_project_list()
+        yield "", "Enter Project ID.", "", [], None, [], None, "", "", "", "", get_project_list()
         return
     if not youtube_url:
-        yield "Enter YouTube URL.", "", [], None, [], None, get_project_list()
+        yield "", "Enter YouTube URL.", "", [], None, [], None, "", "", "", "", get_project_list()
         return
 
     # Step 1: Generate Script
+    print("\n--- 🏁 STARTING AUTO PRODUCTION ---")
     progress(0, desc="[1/4] Generating Script...")
-    status, script, chat_data, plist = generate_script_only(project_id, youtube_url, api_key)
+    yt_url, status, script, chat_data, audio, broll, video, ig, yt, tk, th, plist = load_and_refresh_plist(project_id) # Ensure metadata is fresh
+    
+    # Trigger script generation
+    status, script, chat_data, audio_ign, broll_ign, video_ign, th_ign, plist = generate_script_only(project_id, youtube_url, api_key)
     if "Failed" in status or "error" in status.lower() or not chat_data:
-        yield status, script, chat_data, None, [], None, plist
+        yield "", status, script, chat_data, None, [], None, ig, yt, tk, th, plist
         return
     
-    yield f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, plist
+    yield youtube_url, f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, ig, yt, tk, th, plist
 
     # Step 2: Generate All Audio
+    print("🎙️ [AUTO] Starting Audio Batch Generation...")
     progress(0.2, desc="[2/4] Generating Audio Studio...")
     final_chat_data = chat_data
     for status_update, updated_chat in generate_all_audio(project_id, chat_data, ci_session, progress):
         final_chat_data = updated_chat
-        yield f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, plist
+        yield youtube_url, f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, ig, yt, tk, th, plist
 
     # Step 3: Studio Mastering
+    print("🎚️ [AUTO] Starting Studio Mastering...")
     progress(0.7, desc="[3/4] Studio Mastering...")
     status_master, master_audio, broll_data = process_studio_mastering(project_id, api_key, progress)
     if "Error" in status_master:
-         yield status_master, script, final_chat_data, master_audio, broll_data, None, plist
+         yield youtube_url, status_master, script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, plist
          return
 
-    yield f"[3/4] Mastering OK. Rendering Final...", script, final_chat_data, master_audio, broll_data, None, plist
+    yield youtube_url, f"[3/4] Mastering OK. Rendering Final...", script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, plist
 
     # Step 4: Auto Render Final 60fps
+    from video import VideoRenderer
+    print("🎬 [AUTO] Starting Final Video Render (60fps)...")
     progress(0.9, desc="[4/4] Rendering Final 60fps...")
-    status_video, video_path = process_video_generation(project_id, fps=60, progress=progress)
+    renderer = VideoRenderer(project_id)
+    try:
+        video_path = renderer.render(fps=60)
+        status_video = "Render Success"
+        print(f"✅ [AUTO] Render Complete: {video_path}")
+    except Exception as e:
+        status_video = f"Render Error: {e}"
+        print(f"❌ [AUTO] Render Failed: {e}")
+        video_path = None
 
-    yield f"🚀 Auto Production Complete!\n{status_video}", script, final_chat_data, master_audio, broll_data, video_path, get_project_list()
+    print("--- 🏆 PRODUCTION FINISHED ---\n")
+    yield youtube_url, f"🚀 Auto Production Complete!\n{status_video}", script, final_chat_data, master_audio, broll_data, video_path, ig, yt, tk, th, get_project_list()
 
 # --- Style Definitions (Gradio 6.0) ---
 CUSTOM_CSS = """
@@ -949,6 +732,12 @@ with gr.Blocks() as demo:
     revoicer_session_input = gr.Textbox(label="Revoicer CI Session", placeholder="ci_session value", value=DEFAULT_REVOICER_SESSION, type="text", render=False)
     status_out = gr.Textbox(label="Status", value="Ready", interactive=False, render=False)
     
+    # New social media components
+    ig_input = gr.Textbox(label="Instagram", placeholder="@username", scale=1, render=False)
+    yt_handle_input = gr.Textbox(label="YouTube", placeholder="@channel", scale=1, render=False)
+    tk_input = gr.Textbox(label="TikTok", placeholder="@username", scale=1, render=False)
+    th_input = gr.Textbox(label="Threads", placeholder="@username", scale=1, render=False)
+    
     with gr.Column(elem_classes=["container"]):
         with gr.Column(elem_classes=["title-area"]):
             gr.Markdown('<div style="text-align:center;"><span style="background: linear-gradient(90deg, #60a5fa 0%, #a78bfa 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 2.8rem; font-weight: 800;">DeepStream Studio ⚓</span><br><span style="color: #6b7280; font-size: 1.1rem;">Podcast Editor & Audio Generator Per-Line</span></div>')
@@ -978,17 +767,18 @@ with gr.Blocks() as demo:
                             variant="primary" if is_active else "secondary", 
                             size="sm", 
                             elem_classes=["project-item-active" if is_active else "project-item"],
-                            scale=1
+                            scale=1,
+                            key=f"proj-btn-{pid}"
                         )
                         
                         def make_click_fn(p=pid):
                             def on_click():
-                                return p, f"Project '{p}' Loaded!", *load_and_refresh_plist(p)
+                                return p, *load_and_refresh_plist(p)
                             return on_click
                         
                         btn_p.click(
                             fn=make_click_fn(pid), 
-                            outputs=[project_input, status_out, yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, project_list_state]
+                            outputs=[project_input, yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
                         )
                         
                 # Event Listeners for Clear All (inside render because the buttons are dynamic)
@@ -997,17 +787,17 @@ with gr.Blocks() as demo:
                 btn_cancel_all.click(fn=lambda: gr.update(visible=False), outputs=[confirm_all_row])
                 btn_confirm_all.click(
                     fn=delete_all_projects,
-                    outputs=[status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, project_list_state]
+                    outputs=[status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
                 ).then(fn=lambda: (gr.update(visible=False), ""), outputs=[confirm_all_row, project_input])
         
         with gr.Group():
             with gr.Row():
                 with gr.Column(scale=3):
-                    project_input.render() # Put it here
-                    yt_input = gr.Textbox(label="YouTube Link", placeholder="https://www.youtube.com/watch?v=...", scale=2)
+                    project_input.render() 
+                    yt_input.render()
                 with gr.Column(scale=3):
-                    api_input = gr.Textbox(label="DeepSeek API Key", placeholder="sk_...", value=DEFAULT_DEEPSEEK_API_KEY, type="text")
-                    revoicer_session_input = gr.Textbox(label="Revoicer CI Session", placeholder="ci_session value", value=DEFAULT_REVOICER_SESSION, type="text")
+                    api_input.render()
+                    revoicer_session_input.render()
             with gr.Row():
                 btn_gen_script = gr.Button("Manual", variant="primary")
                 btn_gen_auto = gr.Button("Autopilot", variant="secondary")
@@ -1015,6 +805,23 @@ with gr.Blocks() as demo:
         status_out.render()
         
         with gr.Tabs():
+            with gr.TabItem("0. Social Media"):
+                with gr.Column():
+                    gr.Markdown("### 📱 Social Media Handles\nUpdate your show's social media handles. These will be used for your podcast video overlays.")
+                    with gr.Row():
+                        ig_input.render()
+                        yt_handle_input.render()
+                        tk_input.render()
+                        th_input.render()
+                    
+                    def on_social_change(p_id, ig, yt, tk, th):
+                        save_project_social(p_id, ig, yt, tk, th)
+                    
+                    ig_input.blur(fn=on_social_change, inputs=[project_input, ig_input, yt_handle_input, tk_input, th_input])
+                    yt_handle_input.blur(fn=on_social_change, inputs=[project_input, ig_input, yt_handle_input, tk_input, th_input])
+                    tk_input.blur(fn=on_social_change, inputs=[project_input, ig_input, yt_handle_input, tk_input, th_input])
+                    th_input.blur(fn=on_social_change, inputs=[project_input, ig_input, yt_handle_input, tk_input, th_input])
+
             with gr.TabItem("1. Source Transcript"):
                 trans_out = gr.TextArea(label="Source Transcript", lines=15, interactive=False)
 
@@ -1037,7 +844,7 @@ with gr.Blocks() as demo:
                         return
                         
                     for i, item in enumerate(chat_data):
-                        with gr.Column(elem_classes=["chat-row"]):
+                        with gr.Column(elem_classes=["chat-row"], key=f"chat-row-{item.get('id', i)}"):
                             with gr.Row():
                                 with gr.Column(scale=1, min_width=60):
                                     btn_up = gr.Button("Up", size="sm")
@@ -1046,10 +853,10 @@ with gr.Blocks() as demo:
                                     
                                 with gr.Column(scale=6):
                                     with gr.Row():
-                                        spk = gr.Dropdown(choices=["Ted", "Eddy"], value=item.get("speaker", "Ted"), label="Speaker", interactive=True, scale=1)
-                                        expr = gr.Dropdown(choices=EXPRESSIONS, value=item.get("expression", "normal"), label="Expression", interactive=True, scale=1)
-                                        tn = gr.Dropdown(choices=TONES, value=item.get("tone", "Normal"), label="Tone", interactive=True, scale=1)
-                                        msg = gr.TextArea(value=item.get("message", ""), label="Text Dialog", lines=2, interactive=True, scale=2)
+                                        spk = gr.Dropdown(choices=["Ted", "Eddy"], value=item.get("speaker", "Ted"), label="Speaker", interactive=True, scale=1, key=f"spk-{item.get('id', i)}")
+                                        expr = gr.Dropdown(choices=EXPRESSIONS, value=item.get("expression", "normal"), label="Expression", interactive=True, scale=1, key=f"expr-{item.get('id', i)}")
+                                        tn = gr.Dropdown(choices=TONES, value=item.get("tone", "Normal"), label="Tone", interactive=True, scale=1, key=f"tn-{item.get('id', i)}")
+                                        msg = gr.TextArea(value=item.get("message", ""), label="Text Dialog", lines=2, interactive=True, scale=2, key=f"msg-{item.get('id', i)}")
                                 
                                 with gr.Column(scale=2):
                                     is_processing = item.get("is_processing", False)
@@ -1058,7 +865,8 @@ with gr.Blocks() as demo:
                                         type="filepath", 
                                         label="PROCESSING..." if is_processing else "Preview Audio", 
                                         interactive=False,
-                                        elem_classes=["generating-pulse"] if is_processing else []
+                                        elem_classes=["generating-pulse"] if is_processing else [],
+                                        key=f"audio-{item.get('id', i)}"
                                     )
                                     btn_audio = gr.Button("Generating..." if is_processing else "Generate Audio", variant="primary" if is_processing else "secondary", interactive=not is_processing)
                                     
@@ -1129,31 +937,46 @@ with gr.Blocks() as demo:
                     btn_add.click(fn=add_row, inputs=[chat_state, project_input], outputs=[chat_state])
 
             with gr.TabItem("3. Studio Mastering"):
-                btn_mastering = gr.Button("Join & Mastering Step (Enhance + Metadata)", variant="primary")
+                with gr.Row():
+                    with gr.Column():
+                        btn_mastering = gr.Button("Join & Mastering Step (Enhance + Metadata)", variant="primary")
+                        bg_music_input = gr.Audio(label="Custom BGM (Optional)", type="filepath")
+                
                 mastering_preview = gr.Audio(label="Preview Master Audio", type="filepath", interactive=False)
                 
                 @gr.render(inputs=[broll_state])
                 def render_broll_previews(data):
                     if not data:
                         return gr.Markdown("*Belum ada data B-roll. Klik mastering untuk menghasilkan naskah broll.*")
-                    with gr.Row():
-                        for i, seg in enumerate(data):
-                            with gr.Column(scale=1, min_width=250):
-                                gr.Video(value=seg.get("local_path"), label=f"Segment {i+1} ({seg.get('segment_start')}s - {seg.get('segment_end')}s)", interactive=False)
-                                gr.Markdown(f"**Keyword**: {seg.get('query')}")
+                    
+                    # Force 4 columns per row
+                    for chunk_start in range(0, len(data), 4):
+                        with gr.Row():
+                            chunk = data[chunk_start : chunk_start + 4]
+                            for j, seg in enumerate(chunk):
+                                i = chunk_start + j
+                                with gr.Column(scale=1, min_width=200, key=f"broll-col-{i}"):
+                                    gr.Video(
+                                        value=seg.get("local_path"), 
+                                        label=f"Seg {i+1} ({seg.get('segment_start')}s)", 
+                                        interactive=False, 
+                                        key=f"broll-vid-{i}"
+                                    )
+                                    gr.Markdown(f"**Keyword**: {seg.get('query')}", key=f"broll-text-{i}")
 
                 btn_mastering.click(
                     fn=process_studio_mastering,
-                    inputs=[project_input, api_input],
+                    inputs=[project_input, api_input, bg_music_input],
                     outputs=[status_out, mastering_preview, broll_state]
                 )
 
             with gr.TabItem("4. Video Generator"):
                 with gr.Row():
-                    fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS Render")
-                    btn_render_video = gr.Button("Render Final Video (9:16)", variant="primary")
-                
-                video_out = gr.Video(label="Final Video Result")
+                    with gr.Column():
+                        fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS Render")
+                        btn_render_video = gr.Button("Render Final Video (9:16)", variant="primary")
+                    with gr.Column():
+                        video_out = gr.Video(label="Final Video Result")
                 
                 btn_render_video.click(
                     fn=process_video_generation,
@@ -1167,25 +990,25 @@ with gr.Blocks() as demo:
     project_input.submit(
         fn=load_and_refresh_plist,
         inputs=[project_input],
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
     )
     project_input.blur(
         fn=load_and_refresh_plist,
         inputs=[project_input],
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
     )
 
 
     btn_gen_script.click(
         fn=generate_script_only, 
         inputs=[project_input, yt_input, api_input], 
-        outputs=[status_out, trans_out, chat_state, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
     )
 
     btn_gen_auto.click(
         fn=process_auto_generate,
         inputs=[project_input, yt_input, api_input, revoicer_session_input],
-        outputs=[status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
     )
 
     btn_generate_all.click(

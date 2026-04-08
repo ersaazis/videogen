@@ -1,0 +1,20 @@
+# General
+.env
+.DS_Store
+__pycache__/
+*.pyc
+*.py[cod]
+
+# Project Specific
+projects/
+temp/
+
+# Virtual Environment
+venv/
+.venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
