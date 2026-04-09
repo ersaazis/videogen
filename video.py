@@ -40,9 +40,9 @@ SUBTITLE_PADDING_X, SUBTITLE_PADDING_Y = 32, 24
 SUBTITLE_BORDER_RADIUS = 18
 
 # Social Media Overlay
-SOCIAL_FONT_SIZE = 40
-SOCIAL_ICON_SIZE = 40
-SOCIAL_BAR_Y = 1640 # Final static position shifted up for better gap
+SOCIAL_FONT_SIZE = 45 # Slightly bigger
+SOCIAL_ICON_SIZE = 50 # Bigger icon
+SOCIAL_BAR_Y = 1720 # Shifted down further to avoid overlapping with 3-line subtitles
 
 # Watermark
 WATERMARK_TEXT = "video provided by Pexels"
@@ -176,11 +176,17 @@ class VideoFrameBuilder:
 
     def _make_social_overlay(self):
         """Creates a 2-column grid of social media icons + handles."""
+        if not self.social_data:
+            print("⚠️ [RENDER] No social media data found in project JSON.")
+            return None
+            
         # Row-based mapping as requested: (Col 1, Col 2)
         grid_config = [
             [("youtube", self.social_data.get("youtube")), ("tiktok", self.social_data.get("tiktok"))],
             [("instagram", self.social_data.get("instagram")), ("threads", self.social_data.get("threads"))]
         ]
+        
+        print(f"📦 [RENDER] Building social overlay with: {self.social_data}")
         
         # Prepare processed items
         rows = []
