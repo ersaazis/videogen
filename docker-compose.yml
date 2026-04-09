@@ -10,11 +10,11 @@ services:
       - .env
     environment:
       - GRADIO_SERVER_NAME=0.0.0.0
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 4G
     restart: unless-stopped
     networks:
       - local
