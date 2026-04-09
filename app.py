@@ -434,7 +434,12 @@ def generate_all_audio(project_id, chat_data, ci_session, progress=gr.Progress()
         updated_chat[i]["is_processing"] = True
         yield f"Generating Audio {i+1}/{len(updated_chat)}: {speaker}...", updated_chat
             
-        path = generate_audio_for_message(speaker, message, audio_dir, audio_id, ci_session, tone=tone)
+        try:
+            path = generate_audio_for_message(speaker, message, audio_dir, audio_id, ci_session, tone=tone)
+        except Exception as e:
+            print(f"❌ [AUDIO GEN ERROR] {speaker}: {e}")
+            traceback.print_exc()
+            path = None
         
         # Selesai processing
         updated_chat[i]["is_processing"] = False
@@ -444,7 +449,9 @@ def generate_all_audio(project_id, chat_data, ci_session, progress=gr.Progress()
         
         # Yield update state agar audio player terisi
         yield f"Audio {i+1} Ready. Lanjut...", updated_chat
-        time.sleep(0.5) # Beri nafas untuk UI render
+        try:
+            time.sleep(0.5) # Beri nafas untuk UI render
+        except: pass
                 
     # Save back to chat.json
     chat_json_path = os.path.join(project_dir, "chat.json")
@@ -1018,25 +1025,21 @@ with gr.Blocks() as demo:
                 
                 mastering_preview.render()
                 
-                @gr.render(inputs=[broll_state])
-                def render_broll_previews(data):
+                broll_html_out = gr.HTML(value="*Belum ada data B-roll. Klik mastering untuk menghasilkan naskah broll.*")
+                
+                def render_broll_html(data):
                     if not data:
-                        return gr.Markdown("*Belum ada data B-roll. Klik mastering untuk menghasilkan naskah broll.*")
+                        return "*Belum ada data B-roll. Klik mastering untuk menghasilkan naskah broll.*"
+                    html_content = "<div style='display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;'>"
+                    for i, seg in enumerate(data):
+                        local_path = seg.get("local_path", "")
+                        query = seg.get("query", "B-Roll")
+                        video_tag = f"<video src='/file={local_path}' controls style='width: 100%; border-radius: 8px;'></video>" if local_path else "<div style='background:#1f2937; height:150px; border-radius: 8px; display:flex; align-items:center; justify-content:center;'>No Video</div>"
+                        html_content += f"<div>{video_tag}<p style='font-size: 0.9em; margin-top: 5px; color: #d1d5db;'><b>Keyword:</b> {query}</p></div>"
+                    html_content += "</div>"
+                    return html_content
                     
-                    # Force 4 columns per row
-                    for chunk_start in range(0, len(data), 4):
-                        with gr.Row():
-                            chunk = data[chunk_start : chunk_start + 4]
-                            for j, seg in enumerate(chunk):
-                                i = chunk_start + j
-                                with gr.Column(scale=1, min_width=200, key=f"broll-col-{i}"):
-                                    gr.Video(
-                                        value=seg.get("local_path"), 
-                                        label=f"Seg {i+1} ({seg.get('segment_start')}s)", 
-                                        interactive=False, 
-                                        key=f"broll-vid-{i}"
-                                    )
-                                    gr.Markdown(f"**Keyword**: {seg.get('query')}", key=f"broll-text-{i}")
+                broll_state.change(fn=render_broll_html, inputs=[broll_state], outputs=[broll_html_out])
 
                 btn_mastering.click(
                     fn=process_studio_mastering,
