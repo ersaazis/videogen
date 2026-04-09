@@ -337,6 +337,14 @@ def load_project_data(project_id):
                 if os.path.exists(gen_path):
                     with open(gen_path, "r", encoding="utf-8") as f: gen_cap = f.read()
                 
+                title_path = os.path.join(output_dir, "title.json")
+                if os.path.exists(title_path):
+                    with open(title_path, "r", encoding="utf-8") as f:
+                        t_data = json.load(f)
+                        title = t_data.get("title", "")
+                        if title and title not in gen_cap:
+                            gen_cap = f"# 🎬 {title}\n\n{gen_cap}"
+                
                 soc_path = os.path.join(output_dir, "caption-social.md")
                 if os.path.exists(soc_path):
                     with open(soc_path, "r", encoding="utf-8") as f: soc_cap = f.read()

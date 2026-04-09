@@ -154,7 +154,7 @@ class VideoPlanner:
     def generate_video_description(self, chat_data, output_dir):
         """
         Generates marketing captions and saves them to separate files:
-        caption-general.md and caption-social.md.
+        caption-general.md, caption-social.md, and title.json.
         """
         if not self.api_key:
             return None, None
@@ -163,7 +163,7 @@ class VideoPlanner:
         
         prompt = f"""
         You are a social media manager and content creator. Based on this AI podcast script, 
-        generate two distinct captions for posting.
+        generate three distinct pieces of content.
         
         Script:
         ---
@@ -171,7 +171,10 @@ class VideoPlanner:
         ---
         
         TASK:
-        Generate exactly two sections using these exact headers:
+        Generate exactly three sections using these exact headers:
+        
+        # TITLE
+        [Provide a short, punchy, high-CTR clickbait title (under 10 words)]
         
         # GENERAL
         [Provide a detailed, professional summary of the video insights. Focus on being informative.]
@@ -181,7 +184,7 @@ class VideoPlanner:
         
         MANDATORY RULES:
         - USE ENGLISH ONLY.
-        - DO NOT USE ANY HASHTAGS (#).
+        - DO NOT USE ANY HASHTAGS (#) outside of the headers.
         - DO NOT USE SYMBOLS OTHER THAN . , ' ! ?
         - NO FORMATTING other than plain text.
         """
@@ -195,17 +198,26 @@ class VideoPlanner:
             text = response.choices[0].message.content
             
             # Parsing
-            parts = text.split("# SOCIAL")
-            gen_text = parts[0].replace("# GENERAL", "").strip()
+            title_part = text.split("# GENERAL")[0].replace("# TITLE", "").strip()
+            remaining = text.split("# GENERAL")[1] if "# GENERAL" in text else ""
+            parts = remaining.split("# SOCIAL")
+            gen_text = parts[0].strip()
             soc_text = parts[1].strip() if len(parts) > 1 else ""
             
             os.makedirs(output_dir, exist_ok=True)
+            
+            # Save Title
+            with open(os.path.join(output_dir, "title.json"), "w", encoding="utf-8") as f:
+                json.dump({"title": title_part}, f, indent=4)
+            
+            # Save Captions (Prepend title to general as a header)
+            combined_gen = f"# 🎬 {title_part}\n\n{gen_text}"
             with open(os.path.join(output_dir, "caption-general.md"), "w", encoding="utf-8") as f:
-                f.write(gen_text)
+                f.write(combined_gen)
             with open(os.path.join(output_dir, "caption-social.md"), "w", encoding="utf-8") as f:
                 f.write(soc_text)
                 
-            return gen_text, soc_text
+            return combined_gen, soc_text
         except Exception as e:
             print(f"  ⚠️ Error generating description: {e}")
             return None, None
