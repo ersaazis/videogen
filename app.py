@@ -234,14 +234,8 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
     encoded_payload = urllib.parse.quote(json_payload)
     data = f"data={encoded_payload}"
     
-    # --- Proxy Configuration for Revoicer ---
-    proxies = None
-    if WEBSHARE_USERNAME and WEBSHARE_PASSWORD:
-        proxy_url = f"http://{WEBSHARE_USERNAME}:{WEBSHARE_PASSWORD}@p.webshare.io:80"
-        proxies = {"http": proxy_url, "https": proxy_url}
-        
     try:
-        response = requests.post(url, headers=headers, data=data, proxies=proxies, timeout=30)
+        response = requests.post(url, headers=headers, data=data, timeout=30)
         if response.status_code == 200:
             try:
                 res_json = response.json()
@@ -253,7 +247,7 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
                 download_link = res_json["data"]["voice"]["download_link"]
                 download_link = download_link.replace("\\/", "/") 
                 
-                audio_res = requests.get(download_link, proxies=proxies, timeout=30)
+                audio_res = requests.get(download_link, timeout=30)
                 if audio_res.status_code == 200:
                     file_name = f"{audio_id}.mp3"
                     full_path = os.path.join(output_path, file_name)
@@ -1100,8 +1094,8 @@ with gr.Blocks() as demo:
     )
 
     # .env Auto-Persistence
-    api_input.change(fn=lambda v: update_env_file("DEEPSEEK_API_KEY", v), inputs=[api_input])
-    revoicer_session_input.change(fn=lambda v: update_env_file("REVOICER_CI_SESSION", v), inputs=[revoicer_session_input])
+    api_input.change(fn=lambda v: (update_env_file("DEEPSEEK_API_KEY", v), None)[1], inputs=[api_input])
+    revoicer_session_input.change(fn=lambda v: (update_env_file("REVOICER_CI_SESSION", v), None)[1], inputs=[revoicer_session_input])
 
     def update_webshare_user(v):
         global WEBSHARE_USERNAME
