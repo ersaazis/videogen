@@ -1,6 +1,7 @@
 import gradio as gr
 from openai import OpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import WebshareProxyConfig
 import re
 import math
 import traceback
@@ -27,6 +28,8 @@ DEFAULT_REVOICER_SESSION = os.environ.get('REVOICER_CI_SESSION', "")
 PIXELS_API_KEY = os.environ.get('PIXELS_API_KEY', "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
+WEBSHARE_USERNAME = os.environ.get('WEBSHARE_USERNAME', "")
+WEBSHARE_PASSWORD = os.environ.get('WEBSHARE_PASSWORD', "")
 
 def update_env_file(key, value):
     """
@@ -177,7 +180,12 @@ def get_video_id(url):
 
 def get_transcript(video_id):
     try:
-        api = YouTubeTranscriptApi()
+        api = YouTubeTranscriptApi(
+            proxy_config=WebshareProxyConfig(
+                proxy_username=WEBSHARE_USERNAME,
+                proxy_password=WEBSHARE_PASSWORD,
+            )
+        )
         transcript_obj = api.fetch(video_id, languages=['en', 'id'])
         full_text = " ".join([snippet.text for snippet in transcript_obj])
         return full_text
