@@ -131,7 +131,7 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
         
         # 1. Audio Mastering
         enhancer = AudioEnhancer()
-        bg_music_default = os.path.join(os.getcwd(), "assets", "Dragón Rojo - The Mini Vandals.mp3")
+        bg_music_default = os.path.join(os.getcwd(), "assets", ".mp3")
         final_bg = bg_music_path if (bg_music_path and os.path.exists(bg_music_path)) else bg_music_default
         
         print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
