@@ -107,11 +107,11 @@ def delete_all_projects():
 
 def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_music_path=None):
     print(f"🎚️ [MASTER] Starting Studio Mastering for '{project_id}'...")
-    if not project_id: return "Masukkan Project ID.", None
+    if not project_id: return "Masukkan Project ID.", None, []
     safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
     chat_path = os.path.join(project_dir, "chat.json")
-    if not os.path.exists(chat_path): return f"chat.json tidak ditemukan untuk project {safe_pid}.", None
+    if not os.path.exists(chat_path): return f"chat.json tidak ditemukan untuk project {safe_pid}.", None, []
     
     output_dir = os.path.join(project_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
@@ -127,7 +127,7 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
                 audio_paths.append(path)
                 valid_items.append(item)
         
-        if not audio_paths: return "Audio tidak ditemukan. Generate audio dulu.", None
+        if not audio_paths: return "Audio tidak ditemukan. Generate audio dulu.", None, []
         
         # 1. Audio Mastering
         enhancer = AudioEnhancer()
@@ -242,21 +242,38 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
     encoded_payload = urllib.parse.quote(json_payload)
     data = f"data={encoded_payload}"
     
+    # --- Proxy Configuration for Revoicer ---
+    proxies = None
+    if WEBSHARE_USERNAME and WEBSHARE_PASSWORD:
+        proxy_url = f"http://{WEBSHARE_USERNAME}:{WEBSHARE_PASSWORD}@p.webshare.io:80"
+        proxies = {"http": proxy_url, "https": proxy_url}
+        
     try:
-        response = requests.post(url, headers=headers, data=data)
+        response = requests.post(url, headers=headers, data=data, proxies=proxies, timeout=30)
         if response.status_code == 200:
-            res_json = response.json()
+            try:
+                res_json = response.json()
+            except Exception as json_err:
+                print(f"❌ Revoicer Response is not JSON: {response.text[:200]}")
+                return None
+
             if res_json.get("success"):
                 download_link = res_json["data"]["voice"]["download_link"]
                 download_link = download_link.replace("\\/", "/") 
                 
-                audio_res = requests.get(download_link)
+                audio_res = requests.get(download_link, proxies=proxies, timeout=30)
                 if audio_res.status_code == 200:
                     file_name = f"{audio_id}.mp3"
                     full_path = os.path.join(output_path, file_name)
                     with open(full_path, "wb") as f:
                         f.write(audio_res.content)
                     return full_path
+                else:
+                    print(f"❌ Failed to download audio from Revoicer: {audio_res.status_code}")
+            else:
+                print(f"❌ Revoicer API Error: {res_json.get('message', 'Unknown error')}")
+        else:
+            print(f"❌ Revoicer POST failed with status {response.status_code}: {response.text[:200]}")
     except Exception as e:
         print(f"Audio generation failed for {speaker}: {e}")
     return None
