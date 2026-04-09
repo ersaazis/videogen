@@ -40,9 +40,9 @@ SUBTITLE_PADDING_X, SUBTITLE_PADDING_Y = 32, 24
 SUBTITLE_BORDER_RADIUS = 18
 
 # Social Media Overlay
-SOCIAL_FONT_SIZE = 45 # Slightly bigger
-SOCIAL_ICON_SIZE = 50 # Bigger icon
-SOCIAL_BAR_Y = 1720 # Shifted down further to avoid overlapping with 3-line subtitles
+SOCIAL_FONT_SIZE = 45
+SOCIAL_ICON_SIZE = 45
+SOCIAL_BAR_Y = 1610 # Final static position shifted up for better gap
 
 # Watermark
 WATERMARK_TEXT = "video provided by Pexels"

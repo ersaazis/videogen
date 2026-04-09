@@ -562,12 +562,26 @@ def generate_script_only(project_id, youtube_url, api_key):
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(f"# Transcript for {safe_project_id}\n\n{transcript}")
         
+    project_json_path = os.path.join(project_dir, "project.json")
+    existing_social = {
+        "instagram": "ted_eddy_x",
+        "youtube": "ted_eddy_x",
+        "tiktok": "ted_eddy_x",
+        "threads": "ted_eddy_x"
+    }
+    if os.path.exists(project_json_path):
+        try:
+            with open(project_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                existing_social = data.get("social_media", existing_social)
+        except: pass
+
     project_metadata = {
         "project_id": safe_project_id,
         "youtube_url": youtube_url,
-        "video_id": video_id
+        "video_id": video_id,
+        "social_media": existing_social
     }
-    project_json_path = os.path.join(project_dir, "project.json")
     with open(project_json_path, "w", encoding="utf-8") as f:
         json.dump(project_metadata, f, indent=4, ensure_ascii=False)
     
