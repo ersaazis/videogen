@@ -153,16 +153,17 @@ class VideoPlanner:
 
     def generate_video_description(self, chat_data, output_dir):
         """
-        Generates marketing captions (General and Social Media) in description.md.
+        Generates marketing captions and saves them to separate files:
+        caption-general.md and caption-social.md.
         """
         if not self.api_key:
-            return None
+            return None, None
             
         full_script = "\n".join([f"{item.get('speaker', 'Unknown')}: {item.get('message', '')}" for item in chat_data])
         
         prompt = f"""
-        You are a social media manager and content creator. Based on this AI podcast script between Ted and Eddy, 
-        generate a compelling video description for use during posting.
+        You are a social media manager and content creator. Based on this AI podcast script, 
+        generate two distinct captions for posting.
         
         Script:
         ---
@@ -170,26 +171,19 @@ class VideoPlanner:
         ---
         
         TASK:
-        Generate exactly two sections:
+        Generate exactly two sections using these exact headers:
         
-        1. **General Description**: A professional and detailed summary of what is discussed in the video. 
-        Focus on the "mind-blowing" facts or deep insights.
+        # GENERAL
+        [Provide a detailed, professional summary of the video insights. Focus on being informative.]
         
-        2. **Social Media Caption**: A punchy, casual, brolike, and extremely engaging short caption. 
-        This is for use in descriptions where excitement is key.
+        # SOCIAL
+        [Provide a punchy, engaging, short (under 30 words) teaser description.]
         
         MANDATORY RULES:
         - USE ENGLISH ONLY.
         - DO NOT USE ANY HASHTAGS (#).
-        - DO NOT USE SYMBOLS OTHER THAN . , ' ! ? (matching the podcast vibe).
-        - KEEP THE SOCIAL MEDIA CAPTION UNDER 30 WORDS.
-        
-        Output Format:
-        # General Description
-        [Content here]
-        
-        # Social Media Caption
-        [Content here]
+        - DO NOT USE SYMBOLS OTHER THAN . , ' ! ?
+        - NO FORMATTING other than plain text.
         """
         
         try:
@@ -198,14 +192,20 @@ class VideoPlanner:
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}]
             )
-            description_text = response.choices[0].message.content
+            text = response.choices[0].message.content
+            
+            # Parsing
+            parts = text.split("# SOCIAL")
+            gen_text = parts[0].replace("# GENERAL", "").strip()
+            soc_text = parts[1].strip() if len(parts) > 1 else ""
             
             os.makedirs(output_dir, exist_ok=True)
-            desc_file = os.path.join(output_dir, "description.md")
-            with open(desc_file, "w", encoding="utf-8") as f:
-                f.write(description_text)
+            with open(os.path.join(output_dir, "caption-general.md"), "w", encoding="utf-8") as f:
+                f.write(gen_text)
+            with open(os.path.join(output_dir, "caption-social.md"), "w", encoding="utf-8") as f:
+                f.write(soc_text)
                 
-            return description_text
+            return gen_text, soc_text
         except Exception as e:
             print(f"  ⚠️ Error generating description: {e}")
-            return None
+            return None, None

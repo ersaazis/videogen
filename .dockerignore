@@ -10,3 +10,4 @@ projects/
 *.mp3
 .git/
 .gitignore
+*/*Zone.Identifier

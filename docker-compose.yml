@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   videogen:
     build: .
@@ -12,4 +10,9 @@ services:
       - .env
     environment:
       - GRADIO_SERVER_NAME=0.0.0.0
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
     restart: unless-stopped

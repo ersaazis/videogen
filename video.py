@@ -32,7 +32,7 @@ SUBTITLE_Y = 1460 # Moved down to create gap from avatar bottom (~1430)
 TRANSITION_DURATION = 0.4
 
 # Typography
-SUBTITLE_FONT_SIZE = 55
+SUBTITLE_FONT_SIZE = 50
 SUBTITLE_COLOR = (255, 255, 255)
 SUBTITLE_BG_TED  = (53, 58, 71)
 SUBTITLE_BG_EDDY = (49, 50, 34)
@@ -188,7 +188,7 @@ class VideoFrameBuilder:
             row_items = []
             for name, handle in pair:
                 if handle and name in self._icons:
-                    display_handle = handle if handle.startswith("@") else f"@{handle}"
+                    display_handle = handle.lstrip("@")
                     row_items.append((self._icons[name], display_handle))
                 else:
                     row_items.append(None)

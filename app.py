@@ -72,7 +72,7 @@ def delete_project_files(project_id):
     Permanently deletes a project directory and its content.
     """
     if not project_id:
-        return "", "Masukkan Project ID yang ingin dihapus.", "", [], None, [], None, "", "", "", "", get_project_list()
+        return "", "Masukkan Project ID yang ingin dihapus.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
     
     safe_pid = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_pid)
@@ -81,10 +81,10 @@ def delete_project_files(project_id):
         try:
             shutil.rmtree(project_dir)
             # Clear all project-related fields
-            return "", f"Project '{safe_pid}' BERHASIL DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", get_project_list()
+            return "", f"Project '{safe_pid}' BERHASIL DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
         except Exception as e:
-            return "", f"Gagal menghapus project: {str(e)}", "", [], None, [], None, "", "", "", "", get_project_list()
-    return "", f"Project '{safe_pid}' tidak ditemukan.", "", [], None, [], None, "", "", "", "", get_project_list()
+            return "", f"Gagal menghapus project: {str(e)}", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
+    return "", f"Project '{safe_pid}' tidak ditemukan.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
 
 def delete_all_projects():
     """
@@ -98,7 +98,7 @@ def delete_all_projects():
                 try:
                     shutil.rmtree(path)
                 except: pass
-    return "", "SEMUA PROJECT TELAH DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", get_project_list()
+    return "", "SEMUA PROJECT TELAH DIHAPUS PERMANEN.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
 
 # Helper functions extracted to audio_enhance.py, video_planning.py, and broll_video_finder.py
 
@@ -266,7 +266,8 @@ def load_project_data(project_id):
     master_audio = None
     broll_data = []
     final_video = None
-    ig, yt_h, tk, th = "", "", "", ""
+    gen_cap, soc_cap = "", ""
+    ig, yt_h, tk, th = "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "ted_eddy_x"
     
     if os.path.exists(project_json_path):
         try:
@@ -274,10 +275,10 @@ def load_project_data(project_id):
                 proj_data = json.load(f)
             yt_url = proj_data.get("youtube_url", "")
             social = proj_data.get("social_media", {})
-            ig = social.get("instagram", "")
-            yt_h = social.get("youtube", "")
-            tk = social.get("tiktok", "")
-            th = social.get("threads", "")
+            ig = social.get("instagram", "ted_eddy_x")
+            yt_h = social.get("youtube", "ted_eddy_x")
+            tk = social.get("tiktok", "ted_eddy_x")
+            th = social.get("threads", "ted_eddy_x")
             
             transcript_path = os.path.join(project_dir, "transcript.md")
             if os.path.exists(transcript_path):
@@ -320,22 +321,29 @@ def load_project_data(project_id):
                 
                 # Final Video
                 video_path = os.path.join(output_dir, f"{safe_project_id}_final_video.mp4")
-                if not os.path.exists(video_path):
-                    video_path = os.path.join(temp_dir, f"{safe_project_id}_final_video.mp4")
                 if os.path.exists(video_path):
                     final_video = video_path
 
-            return yt_url, f"Project '{safe_project_id}' Loaded!", transcript_text, chat_data, master_audio, broll_data, final_video, ig, yt_h, tk, th
+                # Captions
+                gen_path = os.path.join(output_dir, "caption-general.md")
+                if os.path.exists(gen_path):
+                    with open(gen_path, "r", encoding="utf-8") as f: gen_cap = f.read()
+                
+                soc_path = os.path.join(output_dir, "caption-social.md")
+                if os.path.exists(soc_path):
+                    with open(soc_path, "r", encoding="utf-8") as f: soc_cap = f.read()
+
+            return yt_url, f"Project '{safe_project_id}' Loaded!", transcript_text, chat_data, master_audio, broll_data, final_video, ig, yt_h, tk, th, gen_cap, soc_cap
         except Exception as e:
-            return "", f"Error loading: {str(e)}", "", [], None, [], None, "", "", "", ""
-    return "", "Ready (Project Baru)", "", [], None, [], None, "", "", "", ""
+            return "", f"Error loading: {str(e)}", "", [], None, [], None, "", "", "", "", "", ""
+    return "", "Ready (Project Baru)", "", [], None, [], None, "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "", ""
 
 def load_and_refresh_plist(project_id):
     """
     Wrapper for load_project_data that also refreshes the project list.
     """
-    yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th = load_project_data(project_id)
-    return yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th, get_project_list()
+    yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th, gen, soc = load_project_data(project_id)
+    return yt_url, status, trans, chat, audio, broll, video, ig, yt, tk, th, gen, soc, get_project_list()
 
 def save_project_social(project_id, ig, yt, tk, th):
     """
@@ -518,9 +526,9 @@ def parse_raw_script(raw_result):
 
 def generate_script_only(project_id, youtube_url, api_key):
     if not project_id:
-        return "Masukkan Project ID.", "", []
+        return "", "Masukkan Project ID.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
     if not youtube_url:
-        return "Masukkan URL YouTube.", "", []
+        return "", "Masukkan URL YouTube.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
     
     safe_project_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_project_id)
@@ -528,11 +536,11 @@ def generate_script_only(project_id, youtube_url, api_key):
     
     video_id = get_video_id(youtube_url)
     if not video_id:
-        return "URL YouTube tidak valid!", "", []
+        return youtube_url, "URL YouTube tidak valid!", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
     
     transcript = get_transcript(video_id)
     if transcript.startswith("Error:"):
-        return f"{transcript}", "", []
+        return youtube_url, f"{transcript}", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
         
     transcript_path = os.path.join(project_dir, "transcript.md")
     with open(transcript_path, "w", encoding="utf-8") as f:
@@ -554,11 +562,11 @@ def generate_script_only(project_id, youtube_url, api_key):
     write a highly engaging, mind-blowing podcast conversation between two close friends: **Ted** and **Eddy**.
     
     Character Background:
-    - Ted & Eddy both grew up in the USA. 
-    - Their speaking style is HIGHLY INFORMAL, casual, and "bro-like". They frequently use modern American slang, idioms, and speak as if they are in an unscripted, high-energy podcast.
+    - Ted & Eddy both grew up in the USA and have a strong American accent. 
+    - Their speaking style is HIGHLY INFORMAL, casual, and "bro-like". They frequently use modern American slang, idioms, and natural American English phrasing as if they are in an unscripted, high-energy podcast.
     
     MANDATORY RULES:
-    1. The ENTIRE CONVERSATION MUST BE IN ENGLISH. 
+    1. The ENTIRE CONVERSATION MUST BE IN ENGLISH using natural American accent nuances and vocabulary. 
     2. Zero formal language. Make it raw, deep, and conversational while fully dissecting the transcript's topic.
     3. THE VERY FIRST LINE OF THE CONVERSATION MUST ALWAYS BE SPOKEN BY TED. Ted MUST open the podcast with a SUPER ENGAGING HOOK.
     4. Keep the flow dynamic, reacting to each other's points.
@@ -599,39 +607,39 @@ def generate_script_only(project_id, youtube_url, api_key):
         with open(chat_json_path, "w", encoding="utf-8") as f:
             json.dump(chat_data, f, indent=4, ensure_ascii=False)
             
-        # Generate description.md (General and Social Media)
+        # Generate description files (General and Social Media)
         output_dir = os.path.join(project_dir, "output")
         os.makedirs(output_dir, exist_ok=True)
         planner = VideoPlanner(api_key=api_key)
-        planner.generate_video_description(chat_data, output_dir)
-        print(f"✅ [SCRIPT] description.md generated in {output_dir}")
+        gen_cap, soc_cap = planner.generate_video_description(chat_data, output_dir)
+        print(f"✅ [SCRIPT] Captions generated in {output_dir}")
             
         print(f"🎉 [SCRIPT] Generation complete for '{project_id}'.")
-        return transcript, "Script & Description Successfully Generated!", transcript, chat_data, None, [], None, "", "", "", "", get_project_list()
+        return youtube_url, "Script & Captions Successfully Generated!", transcript, chat_data, None, [], None, "", "", "", "", gen_cap, soc_cap, get_project_list()
     except Exception as e:
         print(f"❌ [SCRIPT] Error: {str(e)}")
-        return "", f"DeepSeek API Failure: {str(e)}", transcript, [], None, [], None, "", "", "", "", get_project_list()
+        return "", f"DeepSeek API Failure: {str(e)}", transcript, [], None, [], None, "", "", "", "", "", "", get_project_list()
 
 def process_auto_generate(project_id, youtube_url, api_key, ci_session, progress=gr.Progress()):
     if not project_id:
-        yield "", "Enter Project ID.", "", [], None, [], None, "", "", "", "", get_project_list()
+        yield "", "Enter Project ID.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
         return
     if not youtube_url:
-        yield "", "Enter YouTube URL.", "", [], None, [], None, "", "", "", "", get_project_list()
+        yield "", "Enter YouTube URL.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
         return
 
     # Step 1: Generate Script
     print("\n--- 🏁 STARTING AUTO PRODUCTION ---")
     progress(0, desc="[1/4] Generating Script...")
-    yt_url, status, script, chat_data, audio, broll, video, ig, yt, tk, th, plist = load_and_refresh_plist(project_id) # Ensure metadata is fresh
+    yt_url, status, script, chat_data, audio, broll, video, ig, yt, tk, th, gen, soc, plist = load_and_refresh_plist(project_id) # Ensure metadata is fresh
     
     # Trigger script generation
-    status, script, chat_data, audio_ign, broll_ign, video_ign, th_ign, plist = generate_script_only(project_id, youtube_url, api_key)
+    status, script_ign, script, chat_data, audio_ign, broll_ign, video_ign, ig_ign, yt_ign, tk_ign, th_ign, gen_cap, soc_cap, plist = generate_script_only(project_id, youtube_url, api_key)
     if "Failed" in status or "error" in status.lower() or not chat_data:
-        yield "", status, script, chat_data, None, [], None, ig, yt, tk, th, plist
+        yield "", status, script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
         return
     
-    yield youtube_url, f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, ig, yt, tk, th, plist
+    yield youtube_url, f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
 
     # Step 2: Generate All Audio
     print("🎙️ [AUTO] Starting Audio Batch Generation...")
@@ -639,17 +647,17 @@ def process_auto_generate(project_id, youtube_url, api_key, ci_session, progress
     final_chat_data = chat_data
     for status_update, updated_chat in generate_all_audio(project_id, chat_data, ci_session, progress):
         final_chat_data = updated_chat
-        yield youtube_url, f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, ig, yt, tk, th, plist
+        yield youtube_url, f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
 
     # Step 3: Studio Mastering
     print("🎚️ [AUTO] Starting Studio Mastering...")
     progress(0.7, desc="[3/4] Studio Mastering...")
     status_master, master_audio, broll_data = process_studio_mastering(project_id, api_key, progress)
     if "Error" in status_master:
-         yield youtube_url, status_master, script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, plist
+         yield youtube_url, status_master, script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, gen_cap, soc_cap, plist
          return
 
-    yield youtube_url, f"[3/4] Mastering OK. Rendering Final...", script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, plist
+    yield youtube_url, f"[3/4] Mastering OK. Rendering Final...", script, final_chat_data, master_audio, broll_data, None, ig, yt, tk, th, gen_cap, soc_cap, plist
 
     # Step 4: Auto Render Final 60fps
     from video import VideoRenderer
@@ -666,7 +674,7 @@ def process_auto_generate(project_id, youtube_url, api_key, ci_session, progress
         video_path = None
 
     print("--- 🏆 PRODUCTION FINISHED ---\n")
-    yield youtube_url, f"🚀 Auto Production Complete!\n{status_video}", script, final_chat_data, master_audio, broll_data, video_path, ig, yt, tk, th, get_project_list()
+    yield youtube_url, f"🚀 Auto Production Complete!\n{status_video}", script, final_chat_data, master_audio, broll_data, video_path, ig, yt, tk, th, gen_cap, soc_cap, get_project_list()
 
 # --- Style Definitions (Gradio 6.0) ---
 CUSTOM_CSS = """
@@ -733,10 +741,17 @@ with gr.Blocks() as demo:
     status_out = gr.Textbox(label="Status", value="Ready", interactive=False, render=False)
     
     # New social media components
-    ig_input = gr.Textbox(label="Instagram", placeholder="@username", scale=1, render=False)
-    yt_handle_input = gr.Textbox(label="YouTube", placeholder="@channel", scale=1, render=False)
-    tk_input = gr.Textbox(label="TikTok", placeholder="@username", scale=1, render=False)
-    th_input = gr.Textbox(label="Threads", placeholder="@username", scale=1, render=False)
+    ig_input = gr.Textbox(label="Instagram", placeholder="@username", value="ted_eddy_x", scale=1, render=False)
+    yt_handle_input = gr.Textbox(label="YouTube", placeholder="@channel", value="ted_eddy_x", scale=1, render=False)
+    tk_input = gr.Textbox(label="TikTok", placeholder="@username", value="ted_eddy_x", scale=1, render=False)
+    th_input = gr.Textbox(label="Threads", placeholder="@username", value="ted_eddy_x", scale=1, render=False)
+    
+    # Pre-define remaining components
+    trans_out = gr.TextArea(label="Source Transcript", lines=15, interactive=False, render=False)
+    mastering_preview = gr.Audio(label="Preview Master Audio", type="filepath", interactive=False, render=False)
+    video_out = gr.Video(label="Final Video Result", render=False)
+    desc_gen_out = gr.Markdown(render=False)
+    desc_soc_out = gr.Markdown(render=False)
     
     with gr.Column(elem_classes=["container"]):
         with gr.Column(elem_classes=["title-area"]):
@@ -778,7 +793,7 @@ with gr.Blocks() as demo:
                         
                         btn_p.click(
                             fn=make_click_fn(pid), 
-                            outputs=[project_input, yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+                            outputs=[project_input, yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
                         )
                         
                 # Event Listeners for Clear All (inside render because the buttons are dynamic)
@@ -787,7 +802,7 @@ with gr.Blocks() as demo:
                 btn_cancel_all.click(fn=lambda: gr.update(visible=False), outputs=[confirm_all_row])
                 btn_confirm_all.click(
                     fn=delete_all_projects,
-                    outputs=[status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+                    outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
                 ).then(fn=lambda: (gr.update(visible=False), ""), outputs=[confirm_all_row, project_input])
         
         with gr.Group():
@@ -823,7 +838,7 @@ with gr.Blocks() as demo:
                     th_input.blur(fn=on_social_change, inputs=[project_input, ig_input, yt_handle_input, tk_input, th_input])
 
             with gr.TabItem("1. Source Transcript"):
-                trans_out = gr.TextArea(label="Source Transcript", lines=15, interactive=False)
+                trans_out.render()
 
             with gr.TabItem("2. Audio Studio"):
                 btn_generate_all = gr.Button("Generate All Audio", variant="primary")
@@ -942,7 +957,7 @@ with gr.Blocks() as demo:
                         btn_mastering = gr.Button("Join & Mastering Step (Enhance + Metadata)", variant="primary")
                         bg_music_input = gr.Audio(label="Custom BGM (Optional)", type="filepath")
                 
-                mastering_preview = gr.Audio(label="Preview Master Audio", type="filepath", interactive=False)
+                mastering_preview.render()
                 
                 @gr.render(inputs=[broll_state])
                 def render_broll_previews(data):
@@ -975,9 +990,13 @@ with gr.Blocks() as demo:
                     with gr.Column():
                         fps_input = gr.Slider(minimum=1, maximum=60, value=30, step=1, label="FPS Render")
                         btn_render_video = gr.Button("Render Final Video (9:16)", variant="primary")
+                        gr.Markdown("### 📝 General Caption")
+                        desc_gen_out.render()
+                        gr.Markdown("### 🔗 Social Media Caption")
+                        desc_soc_out.render()
                     with gr.Column():
-                        video_out = gr.Video(label="Final Video Result")
-                
+                        video_out.render()
+                                
                 btn_render_video.click(
                     fn=process_video_generation,
                     inputs=[project_input, fps_input],
@@ -990,25 +1009,25 @@ with gr.Blocks() as demo:
     project_input.submit(
         fn=load_and_refresh_plist,
         inputs=[project_input],
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
     )
     project_input.blur(
         fn=load_and_refresh_plist,
         inputs=[project_input],
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
     )
 
 
     btn_gen_script.click(
         fn=generate_script_only, 
         inputs=[project_input, yt_input, api_input], 
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
     )
 
     btn_gen_auto.click(
         fn=process_auto_generate,
         inputs=[project_input, yt_input, api_input, revoicer_session_input],
-        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, project_list_state]
+        outputs=[yt_input, status_out, trans_out, chat_state, mastering_preview, broll_state, video_out, ig_input, yt_handle_input, tk_input, th_input, desc_gen_out, desc_soc_out, project_list_state]
     )
 
     btn_generate_all.click(
@@ -1029,3 +1048,4 @@ if __name__ == "__main__":
         theme=CUSTOM_THEME,
         css=CUSTOM_CSS
     )
+
