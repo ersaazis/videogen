@@ -131,7 +131,7 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
         
         # 1. Audio Mastering
         enhancer = AudioEnhancer()
-        bg_music_default = os.path.join(os.getcwd(), "assets", ".mp3")
+        bg_music_default = os.path.join(os.getcwd(), "assets", "default.mp3")
         final_bg = bg_music_path if (bg_music_path and os.path.exists(bg_music_path)) else bg_music_default
         
         print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
@@ -267,7 +267,7 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
 
 def load_project_data(project_id):
     if not project_id:
-        return "", "Ready", "", [], None, [], None, "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "", ""
+        return "", "Ready", "", [], None, [], None, "ted_eddy_x", "Ted and Eddy", "ted_eddy_x", "ted_eddy_x", "", ""
     safe_project_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_project_id)
     project_json_path = os.path.join(project_dir, "project.json")
@@ -279,7 +279,7 @@ def load_project_data(project_id):
     broll_data = []
     final_video = None
     gen_cap, soc_cap = "", ""
-    ig, yt_h, tk, th = "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "ted_eddy_x"
+    ig, yt_h, tk, th = "ted_eddy_x", "Ted and Eddy", "ted_eddy_x", "ted_eddy_x"
     
     if os.path.exists(project_json_path):
         try:
