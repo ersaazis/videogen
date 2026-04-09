@@ -263,7 +263,7 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
 
 def load_project_data(project_id):
     if not project_id:
-        return "", "Ready", "", [], None, [], None
+        return "", "Ready", "", [], None, [], None, "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "ted_eddy_x", "", ""
     safe_project_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_project_id)
     project_json_path = os.path.join(project_dir, "project.json")
