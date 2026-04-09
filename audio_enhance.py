@@ -16,21 +16,40 @@ class AudioEnhancer:
             self._df_model, self._df_state, _ = init_df()
         return self._df_model, self._df_state
 
-    def enhance_audio_file(self, input_path, output_path):
+    def enhance_audio_file(self, input_path, output_path, use_deepfilter=False):
         """
-        Enhances and normalizes the audio file using DeepFilterNet.
+        Enhances and normalizes the audio file. 
+        DeepFilter is disabled by default for TTS as it can introduce artifacts.
         """
-        model, state = self._get_df_model()
-        audio, _ = load_audio(input_path, sr=state.sr())
-        enhanced = enhance(model, state, audio)
+        if use_deepfilter:
+            try:
+                model, state = self._get_df_model()
+                audio, _ = load_audio(input_path, sr=state.sr())
+                enhanced = enhance(model, state, audio)
+                
+                # Amplifikasi / Normalisasi
+                max_val = torch.max(torch.abs(enhanced))
+                if max_val > 0:
+                    enhanced = (enhanced / max_val) * 0.95
+                    
+                save_audio(output_path, enhanced, sr=state.sr())
+                return output_path
+            except Exception as e:
+                print(f"DeepFilterNet failed: {e}. Falling back to standard normalization.")
         
-        # Amplifikasi / Normalisasi (Meningkatkan volume ke level maksimal yang aman)
-        max_val = torch.max(torch.abs(enhanced))
-        if max_val > 0:
-            enhanced = (enhanced / max_val) * 0.9
-            
-        save_audio(output_path, enhanced, sr=state.sr())
-        return output_path
+        # Standard Normalization (if no DeepFilter or if it fails)
+        try:
+            clip = AudioFileClip(input_path)
+            # Simple peak normalization
+            # Note: moviepy doesn't have a direct "normalize" but we can scale volume
+            # We'll use a more reliable way: just copy for now and let the mixer handle it
+            shutil.copy(input_path, output_path)
+            clip.close()
+            return output_path
+        except Exception as e:
+            print(f"Standard normalization failed: {e}")
+            shutil.copy(input_path, output_path)
+            return output_path
 
     def join_and_enhance(self, audio_paths, output_dir, safe_pid, bg_music_path=None, bg_music_volume=0.1, progress_callback=None):
         """

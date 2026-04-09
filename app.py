@@ -141,7 +141,7 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
             output_dir, 
             safe_pid, 
             bg_music_path=final_bg,
-            bg_music_volume=0.075,
+            bg_music_volume=0.15,
             progress_callback=progress
         )
         if not final_audio_path:
