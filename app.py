@@ -198,25 +198,17 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
         "accept": "application/json, text/javascript, */*; q=0.01",
         "accept-language": "en-US,en;q=0.9",
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "cookie": f"_ga=GA1.1.954622182.1775418693; lastSelectedAvatarGroup=Talon; ci_session={ci_session}; _ga_WLEQM9ZEZN=GS2.1.s1775463002.o5.g0.t1775463002.j60.l0.h0",
+        "cookie": f"ci_session={ci_session}",
         "origin": "https://revoicer.app",
         "referer": "https://revoicer.app/speak",
-        "sec-ch-ua": "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "\"Windows\"",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest"
     }
     
     if speaker.lower() == "ted":
         voice = "verse"
-        # Overridden by tone parameter
     elif speaker.lower() == "eddy":
         voice = "onyx"
-        # Overridden by tone parameter
     else:
         return None
         
@@ -276,6 +268,7 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
             print(f"❌ Revoicer POST failed with status {response.status_code}: {response.text[:200]}")
     except Exception as e:
         print(f"Audio generation failed for {speaker}: {e}")
+        traceback.print_exc()
     return None
 
 def load_project_data(project_id):
@@ -677,24 +670,38 @@ def process_auto_generate(project_id, youtube_url, api_key, ci_session, progress
 
     # Step 1: Generate Script
     print("\n--- 🏁 STARTING AUTO PRODUCTION ---")
-    progress(0, desc="[1/4] Generating Script...")
-    yt_url, status, script, chat_data, audio, broll, video, ig, yt, tk, th, gen, soc, plist = load_and_refresh_plist(project_id) # Ensure metadata is fresh
-    
-    # Trigger script generation
-    status, script_ign, script, chat_data, audio_ign, broll_ign, video_ign, ig_ign, yt_ign, tk_ign, th_ign, gen_cap, soc_cap, plist = generate_script_only(project_id, youtube_url, api_key)
-    if "Failed" in status or "error" in status.lower() or not chat_data:
-        yield "", status, script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+    try:
+        progress(0, desc="[1/4] Generating Script...")
+        yt_url, status, script, chat_data, audio, broll, video, ig, yt, tk, th, gen, soc, plist = load_and_refresh_plist(project_id) # Ensure metadata is fresh
+        
+        # Trigger script generation
+        yt_url, status, script, chat_data, audio_ign, broll_ign, video_ign, ig_ign, yt_ign, tk_ign, th_ign, gen_cap, soc_cap, plist = generate_script_only(project_id, youtube_url, api_key)
+        if "Failed" in status or "error" in status.lower() or not chat_data:
+            yield "", status, script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+            return
+        
+        yield youtube_url, f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+    except Exception as e:
+        err_msg = f"Step 1 Failed: {str(e)}"
+        print(f"❌ {err_msg}")
+        traceback.print_exc()
+        yield "", err_msg, "", [], None, [], None, "", "", "", "", "", "", get_project_list()
         return
-    
-    yield youtube_url, f"[1/4] Script OK. Preparing Audio...", script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
 
     # Step 2: Generate All Audio
     print("🎙️ [AUTO] Starting Audio Batch Generation...")
     progress(0.2, desc="[2/4] Generating Audio Studio...")
     final_chat_data = chat_data
-    for status_update, updated_chat in generate_all_audio(project_id, chat_data, ci_session, progress):
-        final_chat_data = updated_chat
-        yield youtube_url, f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+    try:
+        for status_update, updated_chat in generate_all_audio(project_id, chat_data, ci_session, progress):
+            final_chat_data = updated_chat
+            yield youtube_url, f"[2/4] Audio Studio: {status_update}", script, final_chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+    except Exception as e:
+        err_msg = f"Step 2 (Audio) Failed: {str(e)}"
+        print(f"❌ {err_msg}")
+        traceback.print_exc()
+        yield youtube_url, err_msg, script, chat_data, None, [], None, ig, yt, tk, th, gen_cap, soc_cap, plist
+        return
 
     # Step 3: Studio Mastering
     print("🎚️ [AUTO] Starting Studio Mastering...")
