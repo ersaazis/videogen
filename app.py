@@ -746,6 +746,8 @@ with gr.Blocks() as demo:
     yt_input = gr.Textbox(label="YouTube Link", placeholder="https://www.youtube.com/watch?v=...", scale=2, render=False)
     api_input = gr.Textbox(label="DeepSeek API Key", placeholder="sk_...", value=DEFAULT_DEEPSEEK_API_KEY, type="text", render=False)
     revoicer_session_input = gr.Textbox(label="Revoicer CI Session", placeholder="ci_session value", value=DEFAULT_REVOICER_SESSION, type="text", render=False)
+    webshare_user_input = gr.Textbox(label="Webshare Username", placeholder="username", value=WEBSHARE_USERNAME, type="text", render=False)
+    webshare_pass_input = gr.Textbox(label="Webshare Password", placeholder="password", value=WEBSHARE_PASSWORD, type="password", render=False)
     status_out = gr.Textbox(label="Status", value="Ready", interactive=False, render=False)
     
     # New social media components
@@ -821,6 +823,9 @@ with gr.Blocks() as demo:
                 with gr.Column(scale=3):
                     api_input.render()
                     revoicer_session_input.render()
+                with gr.Column(scale=3):
+                    webshare_user_input.render()
+                    webshare_pass_input.render()
             with gr.Row():
                 btn_gen_script = gr.Button("Manual", variant="primary")
                 btn_gen_auto = gr.Button("Autopilot", variant="secondary")
@@ -1048,6 +1053,19 @@ with gr.Blocks() as demo:
     # .env Auto-Persistence
     api_input.change(fn=lambda v: update_env_file("DEEPSEEK_API_KEY", v), inputs=[api_input])
     revoicer_session_input.change(fn=lambda v: update_env_file("REVOICER_CI_SESSION", v), inputs=[revoicer_session_input])
+
+    def update_webshare_user(v):
+        global WEBSHARE_USERNAME
+        WEBSHARE_USERNAME = v
+        update_env_file("WEBSHARE_USERNAME", v)
+    
+    def update_webshare_pass(v):
+        global WEBSHARE_PASSWORD
+        WEBSHARE_PASSWORD = v
+        update_env_file("WEBSHARE_PASSWORD", v)
+
+    webshare_user_input.change(fn=update_webshare_user, inputs=[webshare_user_input])
+    webshare_pass_input.change(fn=update_webshare_pass, inputs=[webshare_pass_input])
 
 if __name__ == "__main__":
     demo.launch(
