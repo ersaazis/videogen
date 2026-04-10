@@ -89,12 +89,13 @@ def draw_rounded_rect(draw, xy, radius, fill):
 # ─── RENDERING ENGINE ──────────────────────────────────────────────────────────
 
 class VideoFrameBuilder:
-    def __init__(self, cc_data, char_data, broll_data, social_data, total_duration, base_dir):
+    def __init__(self, cc_data, char_data, broll_data, social_data, total_duration, base_dir, thumbnail_path=None):
         self.cc_data = cc_data
         self.char_data = char_data
         self.social_data = social_data or {}
         self.total_duration = total_duration
         self.base_dir = base_dir
+        self.thumbnail_path = thumbnail_path
         
         # Fonts
         self.font_sub = find_best_font(SUBTITLE_FONT_SIZE)
@@ -111,6 +112,24 @@ class VideoFrameBuilder:
         self._watermark = self._make_watermark()
         self._social_overlay = self._make_social_overlay()
         self._solid_bg = Image.new("RGBA", (WIDTH, HEIGHT), (*BG_COLOR, 255))
+        
+        # Load Thumbnail for Intro
+        self._thumbnail_frame = self._load_thumbnail()
+
+    def _load_thumbnail(self):
+        if not self.thumbnail_path or not os.path.exists(self.thumbnail_path):
+            return None
+        try:
+            img = Image.open(self.thumbnail_path).convert("RGBA")
+            # Fit to 1080x1920
+            orig_w, orig_h = img.size
+            scale = max(WIDTH / orig_w, HEIGHT / orig_h)
+            new_w, new_h = int(orig_w * scale), int(orig_h * scale)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            left, top = (new_w - WIDTH)//2, (new_h - HEIGHT)//2
+            img = img.crop((left, top, left+WIDTH, top+HEIGHT))
+            return np.array(img.convert("RGB"))
+        except: return None
 
     def _load_broll_clips(self, broll_data):
         from video_planning import VideoPlanner # Internal use for validation if needed
@@ -247,6 +266,10 @@ class VideoFrameBuilder:
         return frame.crop((left, top, left+WIDTH, top+HEIGHT))
 
     def build_frame(self, t):
+        # 0. Thumbnail Intro (First 1 second)
+        if t < 1.0 and self._thumbnail_frame is not None:
+            return self._thumbnail_frame
+
         # 1. B-roll (Bottom)
         canvas = self._get_broll_frame(t).copy()
         
@@ -321,6 +344,7 @@ class VideoRenderer:
         
         # Paths
         self.audio_path = self._find_audio()
+        self.thumbnail_path = os.path.join(self.output_dir, "thumbnail.jpg")
         self.output_path = os.path.join(self.output_dir, f"{self.safe_pid}_final_video.mp4")
 
     def _load_json(self, name):
@@ -348,7 +372,8 @@ class VideoRenderer:
             duration = audio.duration
             builder = VideoFrameBuilder(
                 self.cc_data, self.char_data, self.broll_data, 
-                self.project_json.get("social_media"), duration, self.base_dir
+                self.project_json.get("social_media"), duration, self.base_dir,
+                thumbnail_path=self.thumbnail_path
             )
             
             video = VideoClip(builder.build_frame, duration=duration)

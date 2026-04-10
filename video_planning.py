@@ -125,6 +125,7 @@ class VideoPlanner:
         return all_captions
 
     def generate_character_json(self, valid_items, output_dir):
+        import random
         current_time = 0
         transitions = []
         for item in valid_items:
@@ -134,7 +135,8 @@ class VideoPlanner:
                     duration = clip.duration
                     speaker_lower = item.get("speaker", "Ted").lower()
                     expr = item.get("expression", "normal")
-                    image_path = f"avatar/{speaker_lower}/{expr}.png"
+                    variant = random.randint(0, 3)
+                    image_path = f"avatar/{speaker_lower}/{expr}{variant}.png"
                     
                     transitions.append({
                         "speaker": item.get("speaker"),
