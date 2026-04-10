@@ -16,7 +16,7 @@ import textwrap
 import argparse
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from moviepy import VideoClip, AudioFileClip, VideoFileClip, CompositeVideoClip, ColorClip
+from moviepy import VideoClip, AudioFileClip, VideoFileClip, CompositeVideoClip, ColorClip, CompositeAudioClip
 from moviepy.video.fx import FadeIn, FadeOut # For future use
 
 # ─── DESIGN CONSTANTS ────────────────────────────────────────────────────────
@@ -102,6 +102,22 @@ class VideoFrameBuilder:
         self.font_social = find_best_font(SOCIAL_FONT_SIZE)
         self.font_wm = find_best_font(WATERMARK_FONT_SIZE)
         
+        # Load Thumbnail for Intro (MUST BE BEFORE intro_offset)
+        self._thumbnail_frame = self._load_thumbnail()
+        
+        # Setup Timing Offset for Thumbnail Intro
+        self.intro_offset = 1.0 if self._thumbnail_frame is not None else 0.0
+        
+        # Apply Offset to all data
+        if self.intro_offset > 0:
+            for item in self.cc_data:
+                item["start"] += self.intro_offset
+                item["end"]   += self.intro_offset
+            for item in self.char_data:
+                item["start"] += self.intro_offset
+                item["end"]   += self.intro_offset
+            # Note: broll synchronization is handled inside _validate_broll by using intro_offset
+            
         self.content_width = WIDTH - 2 * PADDING_H
         self.avatar_size = self.content_width
         
@@ -112,9 +128,7 @@ class VideoFrameBuilder:
         self._watermark = self._make_watermark()
         self._social_overlay = self._make_social_overlay()
         self._solid_bg = Image.new("RGBA", (WIDTH, HEIGHT), (*BG_COLOR, 255))
-        
-        # Load Thumbnail for Intro
-        self._thumbnail_frame = self._load_thumbnail()
+
 
     def _load_thumbnail(self):
         if not self.thumbnail_path or not os.path.exists(self.thumbnail_path):
@@ -145,10 +159,19 @@ class VideoFrameBuilder:
 
     def _validate_broll(self, broll_data):
         if not broll_data: return []
-        valid = [s for s in broll_data if os.path.exists(s["local_path"])]
+        
+        # Shift broll segments by intro offset
+        shifted_data = []
+        for s in broll_data:
+            new_s = dict(s)
+            new_s["segment_start"] += self.intro_offset
+            new_s["segment_end"]   += self.intro_offset
+            shifted_data.append(new_s)
+            
+        valid = [s for s in shifted_data if os.path.exists(s["local_path"])]
         if not valid: return []
         valid.sort(key=lambda s: s["segment_start"])
-        fixed, cursor = [], 0.0
+        fixed, cursor = [], self.intro_offset # Start broll after thumbnail/intro offset
         for seg in valid:
             if seg["segment_start"] > cursor + 0.01:
                 filler = dict(fixed[-1] if fixed else seg)
@@ -160,6 +183,8 @@ class VideoFrameBuilder:
             if seg["duration"] > 0:
                 fixed.append(seg)
                 cursor = seg["segment_end"]
+        
+        # Extend to cover total duration
         if cursor < self.total_duration:
              filler = dict(fixed[-1] if fixed else valid[0])
              filler.update({"segment_start": cursor, "segment_end": self.total_duration})
@@ -369,15 +394,23 @@ class VideoRenderer:
         os.makedirs(self.output_dir, exist_ok=True)
         
         with AudioFileClip(self.audio_path) as audio:
-            duration = audio.duration
+            # Check for Intro Offset
+            has_thumb = os.path.exists(self.thumbnail_path)
+            intro_duration = 1.0 if has_thumb else 0.0
+            
+            total_vid_duration = audio.duration + intro_duration
+            
             builder = VideoFrameBuilder(
                 self.cc_data, self.char_data, self.broll_data, 
-                self.project_json.get("social_media"), duration, self.base_dir,
-                thumbnail_path=self.thumbnail_path
+                self.project_json.get("social_media"), total_vid_duration, self.base_dir,
+                thumbnail_path=self.thumbnail_path if has_thumb else None
             )
             
-            video = VideoClip(builder.build_frame, duration=duration)
-            video = video.with_audio(audio)
+            video = VideoClip(builder.build_frame, duration=total_vid_duration)
+            
+            # Use CompositeAudioClip to ensure the offset is respected (pads with silence)
+            final_audio = CompositeAudioClip([audio.with_start(intro_duration)])
+            video = video.with_audio(final_audio)
             
             video.write_videofile(
                 self.output_path,
