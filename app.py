@@ -219,10 +219,10 @@ def get_video_id(url):
 def get_transcript(video_id):
     try:
         api = YouTubeTranscriptApi(
-            proxy_config=WebshareProxyConfig(
-                proxy_username=WEBSHARE_USERNAME,
-                proxy_password=WEBSHARE_PASSWORD,
-            )
+            # proxy_config=WebshareProxyConfig(
+            #     proxy_username=WEBSHARE_USERNAME,
+            #     proxy_password=WEBSHARE_PASSWORD,
+            # )
         )
         transcript_obj = api.fetch(video_id, languages=['en', 'id'])
         full_text = " ".join([snippet.text for snippet in transcript_obj])
@@ -573,9 +573,9 @@ def parse_raw_script(raw_result):
 
 def generate_script_only(project_id, youtube_url, api_key):
     if not project_id:
-        return "", "Masukkan Project ID.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
+        return "", "Masukkan Project ID.", "", [], None, [], None, None, "", "", "", "", "", "", get_project_list()
     if not youtube_url:
-        return "", "Masukkan URL YouTube.", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
+        return "", "Masukkan URL YouTube.", "", [], None, [], None, None, "", "", "", "", "", "", get_project_list()
     
     safe_project_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', project_id)
     project_dir = os.path.join(os.getcwd(), "projects", safe_project_id)
@@ -583,11 +583,11 @@ def generate_script_only(project_id, youtube_url, api_key):
     
     video_id = get_video_id(youtube_url)
     if not video_id:
-        return youtube_url, "URL YouTube tidak valid!", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
+        return youtube_url, "URL YouTube tidak valid!", "", [], None, [], None, None, "", "", "", "", "", "", get_project_list()
     
     transcript = get_transcript(video_id)
     if transcript.startswith("Error:"):
-        return youtube_url, f"{transcript}", "", [], None, [], None, "", "", "", "", "", "", get_project_list()
+        return youtube_url, f"{transcript}", "", [], None, [], None, None, "", "", "", "", "", "", get_project_list()
         
     transcript_path = os.path.join(project_dir, "transcript.md")
     with open(transcript_path, "w", encoding="utf-8") as f:
