@@ -65,9 +65,8 @@ class AudioEnhancer:
             speaker = item.get("speaker", "").lower()
             if path and os.path.exists(path):
                 clip = AudioFileClip(path)
-                # Amplify Eddy specifically
-                if speaker == "eddy":
-                    clip = clip.with_volume_scaled(2.0)
+                # Amplify
+                clip = clip.with_volume_scaled(2.0)
                 audio_clips.append(clip)
         
         if not audio_clips:
