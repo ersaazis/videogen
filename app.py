@@ -132,10 +132,12 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
         
         # 1. Audio Mastering
         enhancer = AudioEnhancer()
-        bg_music_default = os.path.join(os.getcwd(), "assets", "default.mp3")
-        final_bg = bg_music_path if (bg_music_path and os.path.exists(bg_music_path)) else bg_music_default
+        final_bg = bg_music_path if (bg_music_path and os.path.exists(bg_music_path)) else None
         
-        print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
+        if final_bg:
+            print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
+        else:
+            print("🎵 [MASTER] No background music provided.")
         
         final_audio_path = enhancer.join_and_enhance(
             valid_items, 
@@ -230,7 +232,7 @@ def get_transcript(video_id):
     except Exception as e:
         return f"Error: Gagal mengambil transkrip: {str(e)}"
 
-def generate_audio_for_message(speaker, message, output_path, audio_id, ci_session, tone="Normal"):
+def generate_audio_for_message(speaker, message, output_path, audio_id, ci_session, tone="podcaster"):
     url = "https://revoicer.app/speak/generate_voice"
     headers = {
         "accept": "application/json, text/javascript, */*; q=0.01",
@@ -246,7 +248,7 @@ def generate_audio_for_message(speaker, message, output_path, audio_id, ci_sessi
     if speaker.lower() == "ted":
         voice = "verse"
     elif speaker.lower() == "eddy":
-        voice = "onyx"
+        voice = "ash"
     else:
         return None
         
@@ -458,7 +460,7 @@ def generate_all_audio(project_id, chat_data, ci_session, progress=gr.Progress()
         speaker = item.get("speaker")
         message = item.get("message")
         audio_id = item.get("id")
-        tone = item.get("tone", "Normal")
+        tone = "podcaster" # Always use podcaster tone as per instruction
         
         if not audio_id:
             audio_id = str(uuid.uuid4())
@@ -515,8 +517,12 @@ EXPRESSIONS = ["afraid", "angry", "disgusted", "happy", "nauseated", "normal", "
 def sanitize_chat_data(chat_data):
     """
     Ensures all expressions are within allowed choices to prevent Gradio errors.
+    Also ensures 'tone' is always 'podcaster'.
     """
     for item in chat_data:
+        # Force Tone to podcaster
+        item["tone"] = "podcaster"
+        
         # Sanitize Expression
         expr = item.get("expression", "normal").lower()
         if expr not in EXPRESSIONS:
@@ -559,7 +565,7 @@ def parse_raw_script(raw_result):
                 "id": str(uuid.uuid4()),
                 "speaker": speaker,
                 "expression": expr,
-                "tone": "Normal",
+                "tone": "podcaster",
                 "message": message
             })
         elif line and chat_data:
@@ -568,7 +574,7 @@ def parse_raw_script(raw_result):
     chat_data = sanitize_chat_data(chat_data)
     
     if not chat_data:
-        chat_data = [{"id": str(uuid.uuid4()), "speaker": "System", "expression": "normal", "tone": "Normal", "message": "Failed to parse script:\n" + raw_result}]
+        chat_data = [{"id": str(uuid.uuid4()), "speaker": "System", "expression": "normal", "tone": "podcaster", "message": "Failed to parse script:\n" + raw_result}]
     return chat_data
 
 def generate_script_only(project_id, youtube_url, api_key):
@@ -1002,7 +1008,7 @@ with gr.Blocks() as demo:
                                 if "id" not in state[idx]:
                                     state[idx]["id"] = str(uuid.uuid4())
                                 
-                                path = generate_audio_for_message(s_val, m_val, audio_dir, state[idx]["id"], ci_session, tone="Normal")
+                                path = generate_audio_for_message(s_val, m_val, audio_dir, state[idx]["id"], ci_session, tone="podcaster")
                                 if path:
                                     state[idx]["audio_path"] = path
                                     
@@ -1034,7 +1040,7 @@ with gr.Blocks() as demo:
 
                     btn_add = gr.Button("Add New Dialogue", variant="secondary")
                     def add_row(state, pid):
-                        state.append({"id": str(uuid.uuid4()), "speaker": "Ted", "expression": "normal", "tone": "Normal", "message": ""})
+                        state.append({"id": str(uuid.uuid4()), "speaker": "Ted", "expression": "normal", "tone": "podcaster", "message": ""})
                         save_chat_silently(state, pid)
                         return state
                     btn_add.click(fn=add_row, inputs=[chat_state, project_input], outputs=[chat_state])
@@ -1160,4 +1166,3 @@ if __name__ == "__main__":
         theme=CUSTOM_THEME,
         css=CUSTOM_CSS
     )
-
