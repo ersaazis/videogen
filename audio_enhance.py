@@ -51,17 +51,24 @@ class AudioEnhancer:
             shutil.copy(input_path, output_path)
             return output_path
 
-    def join_and_enhance(self, audio_paths, output_dir, safe_pid, bg_music_path=None, bg_music_volume=0.1, progress_callback=None):
+    def join_and_enhance(self, items, output_dir, safe_pid, bg_music_path=None, bg_music_volume=0.1, progress_callback=None):
         """
         Joins multiple audio files and enhances the resulting master track.
+        'items' should be a list of dicts with 'audio_path' and 'speaker'.
         """
         raw_path = os.path.join(output_dir, f"{safe_pid}_joined_raw.mp3")
         final_path = os.path.join(output_dir, f"{safe_pid}_joined.mp3")
         
         audio_clips = []
-        for path in audio_paths:
-            if os.path.exists(path):
-                audio_clips.append(AudioFileClip(path))
+        for item in items:
+            path = item.get("audio_path")
+            speaker = item.get("speaker", "").lower()
+            if path and os.path.exists(path):
+                clip = AudioFileClip(path)
+                # Amplify Eddy specifically
+                if speaker == "eddy":
+                    clip = clip.with_volume_scaled(1.5)
+                audio_clips.append(clip)
         
         if not audio_clips:
             return None

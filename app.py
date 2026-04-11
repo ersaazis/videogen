@@ -138,11 +138,11 @@ def process_studio_mastering(project_id, api_key, progress=gr.Progress(), bg_mus
         print(f"🎵 [MASTER] Using background music: {os.path.basename(final_bg)}")
         
         final_audio_path = enhancer.join_and_enhance(
-            audio_paths, 
+            valid_items, 
             output_dir, 
             safe_pid, 
             bg_music_path=final_bg,
-            bg_music_volume=0.3,
+            bg_music_volume=0.1,
             progress_callback=progress
         )
         if not final_audio_path:
