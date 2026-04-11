@@ -15,6 +15,10 @@ services:
     #     limits:
     #       cpus: '2'
     #       memory: 4G
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     restart: unless-stopped
     networks:
       - local

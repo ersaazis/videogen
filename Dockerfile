@@ -6,10 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies
-# - ffmpeg: for moviepy
-# - libsndfile1: for librosa/DeepFilterNet
-# - fonts-dejavu: for PIL subtitle generation
-# - libgl1 & libglib2.0-0: for OpenCV/PIL dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
@@ -18,8 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     build-essential \
     git \
+    curl \
+    gnupg \
+    lsb-release \
+    dbus \
+    ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Cloudflare Warp
+RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/cloudflare-client.list && \
+    apt-get update && apt-get install -y cloudflare-warp && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Create and set working directory
 WORKDIR /app
@@ -32,8 +39,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the rest of the application code
 COPY . .
 
+# Ensure entrypoint is executable
+RUN chmod +x entrypoint.sh
+
 # Expose the Gradio port
 EXPOSE 7860
 
-# Command to run the application
-CMD ["python", "app.py"]
+# Command to run the application via entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]
